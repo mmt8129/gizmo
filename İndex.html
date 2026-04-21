@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ABİ AI Robot - Final</title>
+    <style>
+        :root {
+            --led-color: #00f7ff;
+            --bg-color: #000000;
+            --pixel-size: 5px;
+            --gap: 2px;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            touch-action: none;
+        }
+
+        /* --- BAŞLANGIÇ EKRANI --- */
+        #start-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #000;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        #start-btn {
+            padding: 20px 40px;
+            font-size: 24px;
+            background: transparent;
+            border: 2px solid var(--led-color);
+            color: var(--led-color);
+            border-radius: 30px;
+            cursor: pointer;            box-shadow: 0 0 20px var(--led-color);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 10px var(--led-color); }
+            50% { box-shadow: 0 0 30px var(--led-color); }
+            100% { box-shadow: 0 0 10px var(--led-color); }
+        }
+
+        /* --- UI KATMANLARI --- */
+        #weather-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        .rain-drop {
+            position: absolute;
+            background: rgba(0, 247, 255, 0.5);
+            width: 3px;
+            height: 15px;
+            animation: fall linear infinite;
+        }
+
+        @keyframes fall {
+            to { transform: translateY(100vh); }
+        }
+
+        #speech-bubble {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 20, 40, 0.9);
+            border: 2px solid var(--led-color);
+            padding: 15px;
+            border-radius: 15px;
+            max-width: 80%;
+            text-align: center;
+            font-size: 16px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 20;
+            pointer-events: none;
+            font-weight: bold;            box-shadow: 0 0 20px rgba(0, 247, 255, 0.3);
+        }
+
+        /* --- YÜZ / LED GÖZLER --- */
+        #face-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+            gap: 30px;
+        }
+
+        .eye-grid {
+            display: grid;
+            grid-template-columns: repeat(12, var(--pixel-size));
+            grid-template-rows: repeat(12, var(--pixel-size));
+            gap: var(--gap);
+            padding: 10px;
+            background: #050505;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(0, 247, 255, 0.4);
+            border: 1px solid #111;
+        }
+
+        .led {
+            width: var(--pixel-size);
+            height: var(--pixel-size);
+            background-color: #111;
+            border-radius: 50%;
+            transition: background-color 0.05s, box-shadow 0.05s;
+        }
+
+        .led.on {
+            background-color: var(--led-color);
+            box-shadow: 0 0 8px var(--led-color), inset 0 0 2px white;
+        }
+
+        .mouth-grid {
+            display: grid;
+            grid-template-columns: repeat(20, var(--pixel-size));
+            grid-template-rows: repeat(6, var(--pixel-size));
+            gap: var(--gap);
+            margin-top: 30px;
+        }
+
+        /* --- ANİMASYONLAR --- */
+        .talking .mouth-grid .led.on {
+            animation: talkAnim 0.1s infinite alternate;        }
+        
+        @keyframes talkAnim { 
+            from { opacity: 0.4; transform: scale(0.8); } 
+            to { opacity: 1; transform: scale(1.3); } 
+        }
+
+        .listening .eye-grid {
+            box-shadow: 0 0 40px #00ff00;
+            border-color: #00ff00;
+        }
+        .listening .led.on {
+            background-color: #00ff00;
+            box-shadow: 0 0 8px #00ff00;
+        }
+
+        .error .eye-grid {
+            box-shadow: 0 0 40px #ff0000;
+            border-color: #ff0000;
+        }
+        .error .led.on {
+            background-color: #ff0000;
+            box-shadow: 0 0 8px #ff0000;
+        }
+
+        /* --- KAMERA ÖNİZLEME --- */
+        #camera-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        #camera-feed.active { opacity: 0.2; }
+
+        /* --- KONTROLLER --- */
+        #controls {
+            height: 120px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            background: #111;
+            z-index: 30;
+            padding-bottom: 30px;
+            border-top: 1px solid #333;
+        }
+        .btn {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            border: 3px solid #333;
+            background: #222;
+            color: #fff;
+            font-size: 28px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn.active { border-color: #00ff00; box-shadow: 0 0 15px #00ff00; color: #00ff00; }
+        .btn.inactive { border-color: #ff0000; color: #ff0000; }
+        
+        #keyboard-input {
+            position: absolute;
+            opacity: 0;
+            top: -1000px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Başlangıç Ekranı -->
+    <div id="start-overlay">
+        <button id="start-btn">SİSTEMİ BAŞLAT</button>
+        <p style="margin-top:20px; color:#555;">Mikrofon ve Kamera izni için tıklayın</p>
+    </div>
+
+    <!-- Hava Durumu Efektleri -->
+    <div id="weather-layer"></div>
+
+    <!-- Konuşma Balonu -->
+    <div id="speech-bubble">...</div>
+
+    <!-- Kamera Akışı -->
+    <video id="camera-feed" autoplay playsinline muted></video>
+
+    <!-- Yüz Animasyonu -->
+    <div id="face-container">
+        <div class="eye-grid" id="eye-left"></div>
+        <div class="eye-grid" id="eye-right"></div>
+    </div>
+        <div style="text-align:center; z-index:10;">
+        <div class="mouth-grid" id="mouth"></div>
+    </div>
+
+    <!-- Kontroller -->
+    <div id="controls">
+        <div class="btn active" id="btn-mic">🎤</div>
+        <div class="btn inactive" id="btn-cam">📷</div>
+        <div class="btn inactive" id="btn-switch">🔄</div>
+        <div class="btn inactive" id="btn-key">⌨️</div>
+    </div>
+    <input type="text" id="keyboard-input">
+
+    <script>
+        // --- AYARLAR ---
+        const API_KEY = "AIzaSyCq2jSP1Bv4LYi7lAvSJYFlmQgvXGtLXTk"; // BURAYA API KEY GİRİLMELİ
+        const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+        
+        // --- DEĞİŞKENLER ---
+        let isMicOn = true;
+        let isCamOn = false;
+        let isFrontCam = true;
+        let lastInteraction = Date.now();
+        let isSleeping = false;
+        let recognition;
+        let videoStream;
+        
+        // DOM Elementleri
+        const startOverlay = document.getElementById('start-overlay');
+        const startBtn = document.getElementById('start-btn');
+        const eyeLeft = document.getElementById('eye-left');
+        const eyeRight = document.getElementById('eye-right');
+        const mouthGrid = document.getElementById('mouth');
+        const bubble = document.getElementById('speech-bubble');
+        const video = document.getElementById('camera-feed');
+        const weatherLayer = document.getElementById('weather-layer');
+        const btnMic = document.getElementById('btn-mic');
+        const btnCam = document.getElementById('btn-cam');
+        const btnSwitch = document.getElementById('btn-switch');
+        const btnKey = document.getElementById('btn-key');
+        const keyInput = document.getElementById('keyboard-input');
+
+        // --- BAŞLANGIÇ BUTONU ---
+        startBtn.onclick = async () => {
+            startOverlay.style.display = 'none';
+            loadMemory();
+            
+            // İzinleri topluca iste
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });                initSpeechRec();
+            } catch(e) { console.log("Mikrofon izni bekliyor..."); }
+            
+            startIdleCheck();
+            startBlinking();
+            drawEye('normal');
+        };
+
+        // --- LED MATRİS OLUŞTURMA ---
+        function createGrid(element, cols, rows) {
+            element.style.gridTemplateColumns = `repeat(${cols}, var(--pixel-size))`;
+            element.style.gridTemplateRows = `repeat(${rows}, var(--pixel-size))`;
+            for(let i=0; i<cols*rows; i++) {
+                const led = document.createElement('div');
+                led.className = 'led';
+                element.appendChild(led);
+            }
+        }
+        createGrid(eyeLeft, 12, 12);
+        createGrid(eyeRight, 12, 12);
+        createGrid(mouthGrid, 20, 6);
+
+        // --- GÖZ ŞEKİLLERİ ---
+        const shapes = {
+            normal: [
+                [0,0,0,1,1,1,1,1,1,0,0,0], [0,0,1,1,1,1,1,1,1,1,0,0], [0,1,1,1,1,1,1,1,1,1,1,0],
+                [1,1,1,1,0,0,0,0,1,1,1,1], [1,1,1,0,0,0,0,0,0,1,1,1], [1,1,0,0,0,0,0,0,0,0,1,1],
+                [1,1,0,0,0,0,0,0,0,0,1,1], [1,1,0,0,0,0,0,0,0,0,1,1], [1,1,1,0,0,0,0,0,0,1,1,1],
+                [0,1,1,1,1,1,1,1,1,1,1,0], [0,0,1,1,1,1,1,1,1,1,0,0], [0,0,0,1,1,1,1,1,1,0,0,0]
+            ],
+            happy: [
+                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,1,1,0,0,0,0,1,1,0,0], [0,1,1,1,1,0,0,1,1,1,1,0],
+                [1,1,1,1,1,1,1,1,1,1,1,1], [1,1,1,1,1,1,1,1,1,1,1,1], [1,1,1,1,1,1,1,1,1,1,1,1],
+                [0,1,1,1,1,1,1,1,1,1,1,0], [0,0,1,1,1,1,1,1,1,1,0,0], [0,0,0,1,1,1,1,1,1,0,0,0],
+                [0,0,0,0,1,1,1,1,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0]
+            ],
+            sad: [
+                [0,0,0,1,1,1,1,1,1,0,0,0], [0,0,1,1,1,1,1,1,1,1,0,0], [0,1,1,1,1,1,1,1,1,1,1,0],
+                [1,1,1,1,0,0,0,0,1,1,1,1], [1,1,1,0,0,0,0,0,0,1,1,1], [1,1,0,0,0,0,0,0,0,0,1,1],
+                [0,1,1,0,0,0,0,0,0,1,1,0], [0,0,1,1,0,0,0,0,1,1,0,0], [0,0,0,1,1,0,0,1,1,0,0,0],
+                [0,0,0,0,1,1,1,1,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0]
+            ],
+            surprised: [
+                [0,0,0,1,1,1,1,1,1,0,0,0], [0,0,1,1,1,1,1,1,1,1,0,0], [0,1,1,1,1,1,1,1,1,1,1,0],
+                [1,1,1,1,0,0,0,0,1,1,1,1], [1,1,1,0,0,0,0,0,0,1,1,1], [1,1,0,0,0,0,0,0,0,0,1,1],
+                [1,1,1,0,0,0,0,0,0,1,1,1], [0,1,1,1,1,1,1,1,1,1,1,0], [0,0,1,1,1,1,1,1,1,1,0,0],
+                [0,0,0,1,1,1,1,1,1,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0]
+            ],
+            sleeping: [
+                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0],                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,1,1,1,1,1,1,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0]
+            ]
+        };
+
+        function drawEye(shapeName) {
+            const shape = shapes[shapeName] || shapes.normal;
+            [eyeLeft, eyeRight].forEach(grid => {
+                const leds = grid.children;
+                for(let i=0; i<144; i++) {
+                    const row = Math.floor(i / 12);
+                    const col = i % 12;
+                    if(shape[row][col] === 1) leds[i].classList.add('on');
+                    else leds[i].classList.remove('on');
+                }
+            });
+        }
+
+        function drawMouth(isTalking) {
+            const leds = mouthGrid.children;
+            for(let i=0; i<120; i++) {
+                if(isTalking && Math.random() > 0.5) leds[i].classList.add('on');
+                else leds[i].classList.remove('on');
+            }
+        }
+
+        // --- HAFIZA SİSTEMİ ---
+        function saveMemory(key, value) { localStorage.setItem(key, value); }
+        function loadMemory() {
+            if(!localStorage.getItem('userName')) saveMemory('userName', 'ABİ');
+        }
+        function getUserName() { return localStorage.getItem('userName') || 'ABİ'; }
+
+        // --- BUTON OLAYLARI ---
+        btnMic.onclick = () => {
+            isMicOn = !isMicOn;
+            updateBtn(btnMic, isMicOn);
+            if(isMicOn) startListening();
+            else recognition.stop();
+            resetIdle();
+        };
+
+        btnCam.onclick = () => {
+            isCamOn = !isCamOn;
+            updateBtn(btnCam, isCamOn);
+            if(isCamOn) startCamera();
+            else stopCamera();
+            resetIdle();
+        };
+        btnSwitch.onclick = () => {
+            if(!isCamOn) return;
+            isFrontCam = !isFrontCam;
+            stopCamera();
+            startCamera();
+            resetIdle();
+        };
+
+        btnKey.onclick = () => {
+            keyInput.focus();
+            resetIdle();
+        };
+
+        keyInput.onkeydown = (e) => {
+            if(e.key === 'Enter') {
+                handleUserText(keyInput.value);
+                keyInput.value = '';
+                keyInput.blur();
+            }
+        };
+
+        function updateBtn(btn, isActive) {
+            if(isActive) { btn.classList.add('active'); btn.classList.remove('inactive'); }
+            else { btn.classList.add('inactive'); btn.classList.remove('active'); }
+        }
+
+        // --- KAMERA ---
+        async function startCamera() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: isFrontCam ? "user" : "environment" } 
+                });
+                video.srcObject = videoStream;
+                video.classList.add('active');
+            } catch(err) { console.error("Kamera hatası:", err); }
+        }
+
+        function stopCamera() {
+            if(videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                video.classList.remove('active');
+            }
+        }
+
+        // --- SES TANIMA ---
+        function initSpeechRec() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false;                recognition.lang = 'tr-TR';
+                recognition.interimResults = false;
+
+                recognition.onstart = () => document.body.classList.add('listening');
+                recognition.onend = () => {
+                    document.body.classList.remove('listening');
+                    if(isMicOn && !isSleeping) recognition.start();
+                };
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    handleUserText(transcript);
+                };
+                recognition.start();
+            } else {
+                showBubble("Tarayıcın ses tanımayı desteklemiyor ABİ");
+            }
+        }
+
+        function startListening() {
+            try { recognition.start(); } catch(e){}
+        }
+
+        // --- ETKİLEŞİM VE API (GOOGLE SEARCH EKLENDİ) ---
+        async function handleUserText(text) {
+            resetIdle();
+            showBubble(`Sen: ${text}`);
+            
+            const userName = getUserName();
+            const prompt = `
+                Sen benim asistanımsın. Adın ROBO.
+                Kullanıcının adı: ${userName}.
+                Cevabına HER ZAMAN "${userName}" hitabı ile başla.
+                Cevabının sonuna duyguyu parantez içinde yaz. Örnek: (MUTLU), (ÜZGÜN), (ŞAŞKIN), (NÖTR).
+                Konu: ${text}
+            `;
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        contents: [{ parts: [{ text: prompt }] }],
+                        tools: [{ google_search_retrieval: {} }] // Google Arama Modülü
+                    })
+                });
+                const data = await response.json();
+                
+                if(data.error) throw new Error("API Key Hatası");
+
+                const aiText = data.candidates[0].content.parts[0].text;                processAIResponse(aiText);
+            } catch (error) {
+                setEmotion('error');
+                showBubble("Bağlantı Hatası ABİ");
+                speak("Bağlantıyı kontrol et ABİ");
+            }
+        }
+
+        function processAIResponse(text) {
+            let emotion = 'normal';
+            if(text.includes('(MUTLU)')) emotion = 'happy';
+            else if(text.includes('(ÜZGÜN)')) emotion = 'sad';
+            else if(text.includes('(ŞAŞKIN)')) emotion = 'surprised';
+            
+            const cleanText = text.replace(/\[(.*?)\]|\((.*?)\)/g, '').trim();
+            
+            showBubble(cleanText);
+            setEmotion(emotion);
+            speak(cleanText);
+
+            if(text.toLowerCase().includes('yağmur') || text.toLowerCase().includes('yağmurlu')) startWeather('rain');
+            else startWeather('clear');
+        }
+
+        // --- KONUŞMA SENTEZİ ---
+        function speak(text) {
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'tr-TR';
+            utterance.pitch = 0.8;
+            utterance.rate = 1.1;
+            
+            utterance.onstart = () => {
+                document.body.classList.add('talking');
+                const talkInterval = setInterval(() => drawMouth(true), 100);
+                window.currentTalkInterval = talkInterval;
+            };
+            
+            utterance.onend = () => {
+                document.body.classList.remove('talking');
+                clearInterval(window.currentTalkInterval);
+                drawMouth(false);
+                setEmotion('normal');
+            };
+            
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // --- DUYGU VE EFEKTLER ---
+        function setEmotion(emotion) {
+            drawEye(emotion);            if(emotion === 'error') document.body.classList.add('error');
+            else document.body.classList.remove('error');
+        }
+
+        function showBubble(text) {
+            bubble.innerText = text;
+            bubble.style.opacity = 1;
+            setTimeout(() => bubble.style.opacity = 0, 5000);
+        }
+
+        function startWeather(type) {
+            weatherLayer.innerHTML = '';
+            if(type === 'rain') {
+                for(let i=0; i<30; i++) {
+                    const drop = document.createElement('div');
+                    drop.className = 'rain-drop';
+                    drop.style.left = Math.random() * 100 + '%';
+                    drop.style.animationDuration = (0.5 + Math.random()) + 's';
+                    weatherLayer.appendChild(drop);
+                }
+            }
+        }
+
+        // --- BOŞTA KALMA & UYKU ---
+        function resetIdle() {
+            lastInteraction = Date.now();
+            if(isSleeping) wakeUp();
+        }
+
+        function startIdleCheck() {
+            setInterval(() => {
+                if(Date.now() - lastInteraction > 10000) {
+                    if(!isSleeping) goToSleep();
+                }
+            }, 1000);
+        }
+
+        function goToSleep() {
+            isSleeping = true;
+            drawEye('sleeping');
+            drawMouth(false);
+            recognition.stop();
+        }
+
+        function wakeUp() {
+            isSleeping = false;
+            drawEye('normal');
+            if(isMicOn) recognition.start();
+            showBubble("Uyandım ABİ");
+        }
+        function startBlinking() {
+            setInterval(() => {
+                if(!isSleeping) {
+                    drawEye('sleeping');
+                    setTimeout(() => drawEye('normal'), 150);
+                }
+            }, 5000);
+        }
+
+        document.body.addEventListener('touchstart', resetIdle);
+
+    </script>
+</body>
+</html>
