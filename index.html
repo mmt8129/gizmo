@@ -47,8 +47,16 @@
             border: 2px solid var(--led-color);
             color: var(--led-color);
             border-radius: 30px;
-            cursor: pointer;            box-shadow: 0 0 20px var(--led-color);
+            cursor: pointer;
+            box-shadow: 0 0 20px var(--led-color);
             animation: pulse 1.5s infinite;
+            transition: all 0.3s ease;
+        }
+        
+        #start-btn:hover {
+            background: rgba(0, 247, 255, 0.1);
+            box-shadow: 0 0 40px var(--led-color);
+            transform: scale(1.05);
         }
 
         @keyframes pulse {
@@ -96,7 +104,9 @@
             transition: opacity 0.3s;
             z-index: 20;
             pointer-events: none;
-            font-weight: bold;            box-shadow: 0 0 20px rgba(0, 247, 255, 0.3);
+            font-weight: bold;
+            box-shadow: 0 0 20px rgba(0, 247, 255, 0.3);
+            backdrop-filter: blur(5px);
         }
 
         /* --- YÜZ / LED GÖZLER --- */
@@ -145,7 +155,8 @@
 
         /* --- ANİMASYONLAR --- */
         .talking .mouth-grid .led.on {
-            animation: talkAnim 0.1s infinite alternate;        }
+            animation: talkAnim 0.1s infinite alternate;
+        }
         
         @keyframes talkAnim { 
             from { opacity: 0.4; transform: scale(0.8); } 
@@ -155,7 +166,15 @@
         .listening .eye-grid {
             box-shadow: 0 0 40px #00ff00;
             border-color: #00ff00;
+            animation: pulse-green 1.5s infinite;
         }
+        
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 20px #00ff00; }
+            50% { box-shadow: 0 0 50px #00ff00; }
+            100% { box-shadow: 0 0 20px #00ff00; }
+        }
+        
         .listening .led.on {
             background-color: #00ff00;
             box-shadow: 0 0 8px #00ff00;
@@ -207,11 +226,26 @@
             justify-content: center;
             align-items: center;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        .btn:hover {
+            transform: scale(1.1);
+            background: #333;
         }
 
-        .btn.active { border-color: #00ff00; box-shadow: 0 0 15px #00ff00; color: #00ff00; }
-        .btn.inactive { border-color: #ff0000; color: #ff0000; }
+        .btn.active { 
+            border-color: #00ff00; 
+            box-shadow: 0 0 15px #00ff00; 
+            color: #00ff00; 
+        }
+        
+        .btn.inactive { 
+            border-color: #ff0000; 
+            color: #ff0000; 
+        }
         
         #keyboard-input {
             position: absolute;
@@ -258,7 +292,8 @@
 
     <script>
         // --- AYARLAR ---
-        const API_KEY = "AIzaSyCq2jSP1Bv4LYi7lAvSJYFlmQgvXGtLXTk"; // BURAYA API KEY GİRİLMELİ
+        // UYARI: API key'i ortam değişkenlerinden veya güvenli bir yapıdan alın
+        const API_KEY = "AIzaSyCq2jSP1Bv4LYi7lAvSJYFlmQgvXGtLXTk";
         const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
         
         // --- DEĞİŞKENLER ---
@@ -267,33 +302,39 @@
         let isFrontCam = true;
         let lastInteraction = Date.now();
         let isSleeping = false;
-        let recognition;
-        let videoStream;
+        let recognition = null;
+        let videoStream = null;
+        let talkInterval = null;
         
         // DOM Elementleri
-        const startOverlay = document.getElementById('start-overlay');
-        const startBtn = document.getElementById('start-btn');
-        const eyeLeft = document.getElementById('eye-left');
-        const eyeRight = document.getElementById('eye-right');
-        const mouthGrid = document.getElementById('mouth');
-        const bubble = document.getElementById('speech-bubble');
-        const video = document.getElementById('camera-feed');
-        const weatherLayer = document.getElementById('weather-layer');
-        const btnMic = document.getElementById('btn-mic');
-        const btnCam = document.getElementById('btn-cam');
-        const btnSwitch = document.getElementById('btn-switch');
-        const btnKey = document.getElementById('btn-key');
-        const keyInput = document.getElementById('keyboard-input');
+        const elements = {
+            startOverlay: document.getElementById('start-overlay'),
+            startBtn: document.getElementById('start-btn'),
+            eyeLeft: document.getElementById('eye-left'),
+            eyeRight: document.getElementById('eye-right'),
+            mouthGrid: document.getElementById('mouth'),
+            bubble: document.getElementById('speech-bubble'),
+            video: document.getElementById('camera-feed'),
+            weatherLayer: document.getElementById('weather-layer'),
+            btnMic: document.getElementById('btn-mic'),
+            btnCam: document.getElementById('btn-cam'),
+            btnSwitch: document.getElementById('btn-switch'),
+            btnKey: document.getElementById('btn-key'),
+            keyInput: document.getElementById('keyboard-input')
+        };
 
         // --- BAŞLANGIÇ BUTONU ---
-        startBtn.onclick = async () => {
-            startOverlay.style.display = 'none';
+        elements.startBtn.onclick = async () => {
+            elements.startOverlay.style.display = 'none';
             loadMemory();
             
-            // İzinleri topluca iste
             try {
-                await navigator.mediaDevices.getUserMedia({ audio: true });                initSpeechRec();
-            } catch(e) { console.log("Mikrofon izni bekliyor..."); }
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                initSpeechRec();
+            } catch(e) { 
+                console.log("Mikrofon izni bekliyor..."); 
+                showBubble("Mikrofon izni gerekli ABİ");
+            }
             
             startIdleCheck();
             startBlinking();
@@ -341,7 +382,8 @@
                 [0,0,0,1,1,1,1,1,1,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0]
             ],
             sleeping: [
-                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0],                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0],
+                [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0],
                 [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,1,1,1,1,1,1,0,0,0],
                 [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0], [0,0,0,0,0,0,0,0,0,0,0,0]
             ]
@@ -376,22 +418,23 @@
         function getUserName() { return localStorage.getItem('userName') || 'ABİ'; }
 
         // --- BUTON OLAYLARI ---
-        btnMic.onclick = () => {
+        elements.btnMic.onclick = () => {
             isMicOn = !isMicOn;
-            updateBtn(btnMic, isMicOn);
+            updateBtn(elements.btnMic, isMicOn);
             if(isMicOn) startListening();
-            else recognition.stop();
+            else if(recognition) recognition.stop();
             resetIdle();
         };
 
-        btnCam.onclick = () => {
+        elements.btnCam.onclick = () => {
             isCamOn = !isCamOn;
-            updateBtn(btnCam, isCamOn);
+            updateBtn(elements.btnCam, isCamOn);
             if(isCamOn) startCamera();
             else stopCamera();
             resetIdle();
         };
-        btnSwitch.onclick = () => {
+        
+        elements.btnSwitch.onclick = () => {
             if(!isCamOn) return;
             isFrontCam = !isFrontCam;
             stopCamera();
@@ -399,16 +442,16 @@
             resetIdle();
         };
 
-        btnKey.onclick = () => {
-            keyInput.focus();
+        elements.btnKey.onclick = () => {
+            elements.keyInput.focus();
             resetIdle();
         };
 
-        keyInput.onkeydown = (e) => {
+        elements.keyInput.onkeydown = (e) => {
             if(e.key === 'Enter') {
-                handleUserText(keyInput.value);
-                keyInput.value = '';
-                keyInput.blur();
+                handleUserText(elements.keyInput.value);
+                elements.keyInput.value = '';
+                elements.keyInput.blur();
             }
         };
 
@@ -423,15 +466,19 @@
                 videoStream = await navigator.mediaDevices.getUserMedia({ 
                     video: { facingMode: isFrontCam ? "user" : "environment" } 
                 });
-                video.srcObject = videoStream;
-                video.classList.add('active');
-            } catch(err) { console.error("Kamera hatası:", err); }
+                elements.video.srcObject = videoStream;
+                elements.video.classList.add('active');
+            } catch(err) { 
+                console.error("Kamera hatası:", err);
+                showBubble("Kamera erişimi sağlanamadı ABİ");
+            }
         }
 
         function stopCamera() {
             if(videoStream) {
                 videoStream.getTracks().forEach(track => track.stop());
-                video.classList.remove('active');
+                elements.video.classList.remove('active');
+                videoStream = null;
             }
         }
 
@@ -439,19 +486,32 @@
         function initSpeechRec() {
             if ('webkitSpeechRecognition' in window) {
                 recognition = new webkitSpeechRecognition();
-                recognition.continuous = false;                recognition.lang = 'tr-TR';
+                recognition.continuous = false;
+                recognition.lang = 'tr-TR';
                 recognition.interimResults = false;
 
-                recognition.onstart = () => document.body.classList.add('listening');
+                recognition.onstart = () => elements.bubble.classList.add('listening');
                 recognition.onend = () => {
-                    document.body.classList.remove('listening');
-                    if(isMicOn && !isSleeping) recognition.start();
+                    elements.bubble.classList.remove('listening');
+                    if(isMicOn && !isSleeping) {
+                        try { recognition.start(); } catch(e) {}
+                    }
                 };
                 recognition.onresult = (event) => {
                     const transcript = event.results[0][0].transcript;
                     handleUserText(transcript);
                 };
-                recognition.start();
+                recognition.onerror = (event) => {
+                    console.error("Ses tanıma hatası:", event.error);
+                    if(event.error === 'no-speech') {
+                        showBubble("Ses duyamadım ABİ");
+                    }
+                };
+                try {
+                    recognition.start();
+                } catch(e) {
+                    console.error("Ses tanıma başlatılamadı:", e);
+                }
             } else {
                 showBubble("Tarayıcın ses tanımayı desteklemiyor ABİ");
             }
@@ -463,6 +523,8 @@
 
         // --- ETKİLEŞİM VE API (GOOGLE SEARCH EKLENDİ) ---
         async function handleUserText(text) {
+            if(!text || text.trim() === '') return;
+            
             resetIdle();
             showBubble(`Sen: ${text}`);
             
@@ -481,15 +543,29 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
                         contents: [{ parts: [{ text: prompt }] }],
-                        tools: [{ google_search_retrieval: {} }] // Google Arama Modülü
+                        tools: [{ google_search_retrieval: {} }]
                     })
                 });
+                
+                if(!response.ok) {
+                    throw new Error(`API Hatası: ${response.status}`);
+                }
+                
                 const data = await response.json();
                 
-                if(data.error) throw new Error("API Key Hatası");
+                if(data.error) {
+                    console.error("API Error:", data.error);
+                    throw new Error("API Key Hatası");
+                }
 
-                const aiText = data.candidates[0].content.parts[0].text;                processAIResponse(aiText);
+                const aiText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if(aiText) {
+                    processAIResponse(aiText);
+                } else {
+                    throw new Error("Geçersiz yanıt");
+                }
             } catch (error) {
+                console.error("API hatası:", error);
                 setEmotion('error');
                 showBubble("Bağlantı Hatası ABİ");
                 speak("Bağlantıyı kontrol et ABİ");
@@ -514,6 +590,9 @@
 
         // --- KONUŞMA SENTEZİ ---
         function speak(text) {
+            // Önceki konuşmayı iptal et
+            window.speechSynthesis.cancel();
+            
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = 'tr-TR';
             utterance.pitch = 0.8;
@@ -521,15 +600,26 @@
             
             utterance.onstart = () => {
                 document.body.classList.add('talking');
-                const talkInterval = setInterval(() => drawMouth(true), 100);
-                window.currentTalkInterval = talkInterval;
+                talkInterval = setInterval(() => drawMouth(true), 100);
             };
             
             utterance.onend = () => {
                 document.body.classList.remove('talking');
-                clearInterval(window.currentTalkInterval);
+                if(talkInterval) {
+                    clearInterval(talkInterval);
+                    talkInterval = null;
+                }
                 drawMouth(false);
                 setEmotion('normal');
+            };
+            
+            utterance.onerror = (event) => {
+                console.error("Konuşma sentezi hatası:", event.error);
+                document.body.classList.remove('talking');
+                if(talkInterval) {
+                    clearInterval(talkInterval);
+                    talkInterval = null;
+                }
             };
             
             window.speechSynthesis.speak(utterance);
@@ -537,14 +627,27 @@
 
         // --- DUYGU VE EFEKTLER ---
         function setEmotion(emotion) {
-            drawEye(emotion);            if(emotion === 'error') document.body.classList.add('error');
-            else document.body.classList.remove('error');
+            drawEye(emotion);
+            if(emotion === 'error') {
+                document.body.classList.add('error');
+                document.body.classList.remove('listening');
+            } else {
+                document.body.classList.remove('error');
+            }
         }
 
         function showBubble(text) {
-            bubble.innerText = text;
-            bubble.style.opacity = 1;
-            setTimeout(() => bubble.style.opacity = 0, 5000);
+            elements.bubble.innerText = text;
+            elements.bubble.style.opacity = 1;
+            
+            // Önceki zamanlayıcıyı temizle
+            if(elements.bubble.timeoutId) {
+                clearTimeout(elements.bubble.timeoutId);
+            }
+            
+            elements.bubble.timeoutId = setTimeout(() => {
+                elements.bubble.style.opacity = 0;
+            }, 5000);
         }
 
         function startWeather(type) {
@@ -568,8 +671,8 @@
 
         function startIdleCheck() {
             setInterval(() => {
-                if(Date.now() - lastInteraction > 10000) {
-                    if(!isSleeping) goToSleep();
+                if(Date.now() - lastInteraction > 10000 && !isSleeping) {
+                    goToSleep();
                 }
             }, 1000);
         }
@@ -578,15 +681,20 @@
             isSleeping = true;
             drawEye('sleeping');
             drawMouth(false);
-            recognition.stop();
+            if(recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
         }
 
         function wakeUp() {
             isSleeping = false;
             drawEye('normal');
-            if(isMicOn) recognition.start();
+            if(isMicOn && recognition) {
+                try { recognition.start(); } catch(e) {}
+            }
             showBubble("Uyandım ABİ");
         }
+        
         function startBlinking() {
             setInterval(() => {
                 if(!isSleeping) {
@@ -597,6 +705,7 @@
         }
 
         document.body.addEventListener('touchstart', resetIdle);
+        document.body.addEventListener('click', resetIdle);
 
     </script>
 </body>
